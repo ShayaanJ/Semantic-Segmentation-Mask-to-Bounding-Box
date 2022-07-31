@@ -105,9 +105,10 @@ def looping_over_bb_boxes(bboxes, x, threshold, color_bbox=(255,0, 0)):
             string += "{} {} {} {} {} \n".format(class_id, ctr_x, ctr_y, width, height)
         else:
             invalid_bboxes += 1
-
-    print("Invalid bboxes: {}".format(invalid_bboxes))
-    print("Valid bboxes: {}".format(len(bboxes) - invalid_bboxes))
+    
+    string = string[0:-1]
+    # print("Invalid bboxes: {}".format(invalid_bboxes))
+    # print("Valid bboxes: {}".format(len(bboxes) - invalid_bboxes))
     return (string, x)
 
 def preparing_data(path):
@@ -136,6 +137,23 @@ def preparing_results_dir(path):
     create_dir(path+"/building+shadow_mask")
     create_dir(path+"/building+shadow_bbox_combined")
     create_dir(path+"/building_mask+rgb")
+    create_dir(path+"/misc")
+
+def add_weighted_mask(img, mask):
+    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
+    for i in range(mask.shape[0]):
+        for j in range(mask.shape[0]): 
+            if mask[i][j][0] == 255: 
+                mask[i][j] = [255, 0, 0]
+    img = cv2.addWeighted(mask, 0.5, img, 0.5, 0)
+    return img
+
+def its_morphin_time(rgb, mask, kernel, threshold=20):
+    erosion = cv2.erode(mask,kernel,iterations = 3)
+    bboxes = mask_to_bbox(erosion)
+    (string, eroded_bbox_img) = looping_over_bb_boxes(bboxes, rgb.copy(), threshold)
+
+    return (string, eroded_bbox_img)
 
 def main(dest_folder, src_folder, threshold):
     """ Load the dataset """
@@ -162,6 +180,7 @@ def main(dest_folder, src_folder, threshold):
         bldg_ftprint = read_tif(bldg_ftprint)
 
 
+
         # print(np.unique(shdw), "Shadow unique values")
         # print(np.unique(bldg_ftprint), "Building Footprint unique values")
         # print(np.unique(gt), "Ground Truth unique values")
@@ -169,20 +188,42 @@ def main(dest_folder, src_folder, threshold):
         shdw = making_seg_mask(shdw, 255)
         bldg_ftprint = making_seg_mask(bldg_ftprint, 6)
         gt = making_seg_mask(gt, 6)
-        cat_two_img(rgb,cv2.cvtColor(gt, IMREAD_COLOR), "RGB + SHDW")
         
+        kernel = np.ones((5, 5), np.uint8)
+        
+        '''Erosion on shadow morphological operator'''
+        (string, eroded_bbox_img) = its_morphin_time(rgb.copy(), gt, kernel,500)
+        
+        # '''Opening morphological operator'''
+        # erosion = cv2.morphologyEx(gt, cv2.MORPH_OPEN, kernel)
+        # its_morphin_time(rgb.copy(), gt, erosion, name + "_opening_3iters", 500, "bldng/")
+        
+        # erosion = cv2.erode(shdw,kernel,iterations = 3)
+        # its_morphin_time(rgb.copy(), shdw, erosion, name + "_erosion_3iters", 5000, "shdw/")
+
+        # erosion = cv2.morphologyEx(shdw, cv2.MORPH_OPEN, kernel)
+        # its_morphin_time(rgb.copy(), shdw, erosion, name + "_opening_3iters", 5000, "shdw/")
+
+        # combined_mask = combining_two_masks_or(gt, shdw).astype(np.uint8)
+        # combined_mask = making_seg_mask(combined_mask, 1)
+        
+        # erosion = cv2.erode(combined_mask,kernel,iterations = 3)
+        # its_morphin_time(rgb.copy(), combined_mask, erosion, name + "_erosion_3iters", 5000, "combined/")
+        
+        # erosion = cv2.morphologyEx(combined_mask, cv2.MORPH_OPEN, kernel)
+        # its_morphin_time(rgb.copy(), combined_mask, erosion, name + "_opening_3iters", 5000, "combined/")
+
         # bboxes = mask_to_bbox(shdw)
         # (string, new_img) = looping_over_bb_boxes(bboxes, rgb, threshold)
         # cat_two_img(cv2.cvtColor(shdw, IMREAD_COLOR), new_img, "RGB + SHDW")
         # new_mask = combining_two_masks_or(bldg_ftprint, shdw).astype(np.uint8)
         # new_mask = making_seg_mask(new_mask, 1)
         
-        str1 = ""
-        """ Detecting bounding boxes for footprint """
-        bboxes = mask_to_bbox(gt)
-        (string, new_img) = looping_over_bb_boxes(bboxes, rgb, threshold)
-        str1 += string
-        cat_two_img(rgb_copy, new_img, "RGB + GT")
+        # str1 = ""
+        # """ Detecting bounding boxes for footprint """
+        # bboxes = mask_to_bbox(erosion)
+        # (string, new_img) = looping_over_bb_boxes(bboxes, rgb, threshold)
+        # str1 += string
 
         # """ Detecting bounding boxes for shadow """
         # bboxes = mask_to_bbox(shdw)
@@ -195,7 +236,7 @@ def main(dest_folder, src_folder, threshold):
         # print(len(string.split("\n")))
         # """writing txt file"""
         # file = open("results3/txt/" + name + ".txt", "w")
-        # file.write(str1)
+        # file.write(string)
         # file.close()
         
         # """ Saving the image """
@@ -203,7 +244,7 @@ def main(dest_folder, src_folder, threshold):
         # cv2.imwrite("results3/building+shadow_bbox/" + name + ".png", building_shdw_sep_bbox_img) 
         # cv2.imwrite("results3/building+shadow_bbox_combined/" + name + ".png", building_shdw_comb_bbox_img)
         # cv2.imwrite("results3/building_mask+rgb/" + name + ".png", np.concatenate([cv2.cvtColor(bldg_ftprint, IMREAD_COLOR), original], axis=1))
-        cv2.imwrite("results3/building_bbox/" + name + ".jpg", new_img)
+        # cv2.imwrite("results3/building_bbox/" + name + ".jpg", eroded_bbox_img)
 
 if __name__ == "__main__":
     """ Constants """
@@ -211,4 +252,17 @@ if __name__ == "__main__":
     src_folder = "data3"
     threshold = 500
     main(dest_folder, src_folder, threshold)
+
+
+
+
+'''
+How to call this in python script:
+from mask_to_bbox.py import read_tif, making_seg_mask, its_morphin_time
+rgb = cv2.imread(rgb, cv2.IMREAD_COLOR)
+gt = read_tif(gt)
+gt = making_seg_mask(gt, 6)
+kernel = np.ones((5, 5), np.uint8)
+(string, eroded_bbox_img) = its_morphin_time(rgb.copy(), gt, kernel,500)
+'''
     
